@@ -195,6 +195,9 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
+      // a Mac's window: run on a Linux host, the page would take itself for
+      // the Linux app, which has no transition (below)
+      await page.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" }));
       await page.route("**/*", serve("en"));
       await page.goto("http://magpie.test/");
       await page.waitForSelector("#nav button.on");
@@ -275,6 +278,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.addInitScript(() => {
+        // a Mac's window, as in "the two trade places as one motion"
+        Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" });
         window.skipped = 0;
         Document.prototype.startViewTransition = function (change) {
           let done;
