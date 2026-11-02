@@ -17072,11 +17072,16 @@ function loadPanelUse(quiet = false) {
   panelUseFlight = flight;
   return flight;
 }
-// the tab is shown: what it has is drawn, and read again if it is old
+// the tab is shown: what it has is drawn, and read again if it is old, but
+// not while a read is out. That one is what it will draw: a total clicked in
+// the menu bar (panelUseFocus) reads at its period before this runs, a
+// microtask later, and a read asked for meanwhile is kept and went again for
+// the same once the first was in (#4717). Whatever changes what is read (a
+// period, a provider, a day) asks for its own read.
 function panelUseShown() {
   if (mode !== "panel" || panelTab !== "stats") return;
   renderPanelUse();
-  if (!panelUse || performance.now() - panelUseAt > 5e3) loadPanelUse().catch(() => {});
+  if (!panelUseFlight && (!panelUse || performance.now() - panelUseAt > 5e3)) loadPanelUse().catch(() => {});
 }
 if (mode === "panel") {
   // requests come while it is looked at

@@ -223,6 +223,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await page.waitForFunction(() => document.body.dataset.ptab === "stats");
         for (let i = 0; i < 60 && !asked.some((a) => a.includes("period=7d")); i++) await page.waitForTimeout(40);
         assert(asked.some((a) => a.startsWith("/api/usage/requests?") && a.includes("period=7d")), "asked: " + asked.join(" "));
+        // once, with every read landed: the tab shown, a microtask after the
+        // click's own read, asked for it again, and that ask, kept while the
+        // first was out, went once it was in, in WebKit often after the count
+        // below was taken (#4717)
+        await page.waitForFunction(() => !document.querySelector("#panelUsage").classList.contains("pu-loading"));
+        assert.equal(asked.filter((a) => a.includes("period=7d")).length, 1, "asked: " + asked.join(" "));
         await shot(page, "panel");
         // a period that isn't the panel's does nothing
         const n = asked.length;
