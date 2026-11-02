@@ -107,6 +107,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         await pill.scrollIntoViewIfNeeded();
         const before = await view(page);
         assert(before > 0, "the settings list must be scrolled");
+        // what a pick saves redraws the row, and its line, wrapped whole
+        // beside the pill, can take a line less once the pill says Off, as
+        // the words other systems than the Mac's have for it do at 900: the
+        // page then moves only to keep the pill where it was, as in
+        // tray-totals.test.cjs. The page is off its top here, so every pick
+        // holds the pill, moved or not (hold)
+        const pillY = (await pill.boundingBox()).y;
+        const held = async (what) => {
+          const y = (await pill.boundingBox()).y;
+          assert.ok(Math.abs(y - pillY) <= 2, `${what} moved the pill ${(y - pillY).toFixed(1)}px, the page ${before} to ${await view(page)}`);
+        };
 
         // the menu: Off, the cards that can show (not the signed-out one),
         // each with a box to tick; Copilot ticked
@@ -138,7 +149,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(posts.length, 1);
         assert.deepEqual(posts[0].trayUsages, ["claude|a@b.c", "codex|x@y.z", "copilot"]);
         await page.waitForTimeout(300);
-        assert.equal(await view(page), before, "saving must not scroll the page");
+        await held("saving");
 
         // opened and closed with nothing changed: nothing sent
         await pill.click();
@@ -170,7 +181,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.deepEqual(posts.at(-1).trayUsages, []);
         assert.equal(await page.locator("#trayEveryRow").isVisible(), false, "no refresh row with none picked");
         await page.waitForTimeout(300);
-        assert.equal(await view(page), before, "no click moved the page");
+        await held("a click");
 
         assert.deepEqual(errors, []);
         await context.close();

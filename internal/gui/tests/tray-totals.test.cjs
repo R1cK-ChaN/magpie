@@ -113,8 +113,26 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await pill.waitFor();
           await pillIs(page, w.off);
           await reach(page, pill);
-          const before = await view(page);
-          const pillY = (await pill.boundingBox()).y;
+          // the pill's name changes its width, and the row's line, wrapped
+          // whole beside it (arculongus on Discord), can take a line more or
+          // less: the page then moves only to keep the pill where that pick
+          // found it (WebKit scrolls by whole pixels, so a hold can leave it
+          // a pixel off). A view at its top stays there, the pill going down
+          // with its row instead by less than its height, still under the
+          // pointer (hold, gui-shell.md "A click never moves"), so each pick
+          // is held to where the one before left the pill, not to where it
+          // started: how many lines the row's line takes beside each name
+          // depends on its words, the Mac's or another system's
+          let was;
+          const found = async () => { was = { top: await view(page), y: (await pill.boundingBox()).y }; };
+          const held = async (pick) => {
+            await page.waitForTimeout(300);
+            const { y, height } = await pill.boundingBox();
+            if (await view(page) !== was.top) assert.ok(Math.abs(y - was.y) <= 2, `${pick}: a click moved the page, and the pill with it`);
+            else assert.ok(Math.abs(y - was.y) < height, `${pick}: the pill went ${(y - was.y).toFixed(1)}px with its row, from under the pointer`);
+            await found();
+          };
+          await found();
 
           // the two totals follow the subscriptions, each with a box to tick
           await pill.click();
@@ -136,6 +154,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await pillIs(page, w.today);
           assert.deepEqual(posts.at(-1).trayUsages, ["usage:today"]);
           assert.equal(await page.locator("#trayEveryRow").isVisible(), true, "how often it is read again shows with a total picked");
+          await held("today's");
 
           // with a subscription beside it: counted, not called subscriptions
           await pill.click();
@@ -143,6 +162,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.keyboard.press("Escape");
           await pillIs(page, w.two);
           assert.deepEqual(posts.at(-1).trayUsages, ["copilot", "usage:today"], "in the menu's order");
+          await held("with a subscription");
 
           // two subscriptions alone are still subscriptions
           await pill.click();
@@ -151,6 +171,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.keyboard.press("Escape");
           await pillIs(page, w.subs);
           assert.deepEqual(posts.at(-1).trayUsages, ["claude|a@b.c", "copilot"]);
+          await held("two subscriptions");
 
           // the week's alone
           await pill.click();
@@ -160,13 +181,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.keyboard.press("Escape");
           await pillIs(page, w.week);
           assert.deepEqual(posts.at(-1).trayUsages, ["usage:7d"]);
-
-          await page.waitForTimeout(300);
-          // the pill's name changes its width, and the row's line, wrapped
-          // whole beside it (arculongus on Discord), can take a line more or
-          // less: the page then moves only to keep the pill under the pointer (WebKit
-          // scrolls by whole pixels, so four holds can leave it ~1.3px off)
-          if (await view(page) !== before) assert.ok(Math.abs((await pill.boundingBox()).y - pillY) <= 2, "a click moved the page, and the pill with it");
+          await held("the week's");
           assert.deepEqual(errors, []);
           await context.close();
         });
