@@ -206,13 +206,67 @@ func Catalog(ms []catalog.Model) []byte { return CatalogAt(ms, NewSessionEffort(
 // CatalogAt renders models as a whole models.json for a Codex that starts
 // new sessions at effort ("" for its models' own defaults): each model's
 // default_reasoning_level is ModelDefault's.
-func CatalogAt(ms []catalog.Model, effort string) []byte { return CatalogUsed(ms, effort, nil) }
+func CatalogAt(ms []catalog.Model, effort string) []byte {
+	return rendered(entriesAt(ms, 0, effort), nil)
+}
 
-// CatalogUsed is CatalogAt with the models Codex used, most recent first,
-// and a ChatGPT account's own (ChatGPTOwn), kept where the Codex app reads
-// them (FitOwn).
+// CatalogUsed is the catalog of a Codex that has magpie as its provider:
+// CatalogAt with the threads it had before that still described
+// (ThreadSlugs), and with the models Codex used, most recent first, and a
+// ChatGPT account's own (ChatGPTOwn), kept where the Codex app reads them
+// (FitOwn).
 func CatalogUsed(ms []catalog.Model, effort string, used []string) []byte {
 	entries := entriesAt(ms, 0, effort)
+	return rendered(append(entries, ThreadSlugs(entries)...), used)
+}
+
+// ThreadSlugs is a hidden entry of <slug> for each ChatGPT account's own
+// codex/<slug> in entries, as that entry says. A thread keeps the slug it
+// was started on when magpie becomes Codex's provider, and Codex takes a
+// slug its catalog lacks for an unknown model: default metadata, with no
+// code mode and no tool search, so every MCP tool goes out inline, past a
+// window no compaction can get under (#5504). No picker shows a hidden
+// entry, and FitOwn puts it past the ones listed. An id the list has of
+// its own keeps its entry.
+func ThreadSlugs(entries []any) []any {
+	has := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		has[entrySlug(e)] = true
+	}
+	var out []any
+	for _, e := range entries {
+		slug, ok := strings.CutPrefix(entrySlug(e), "codex/")
+		if !ok || has[slug] {
+			continue
+		}
+		switch o := e.(type) {
+		case map[string]any:
+			c := maps.Clone(o)
+			c["slug"], c["visibility"] = slug, "hide"
+			out = append(out, c)
+		case *model:
+			c := *o
+			c.Slug, c.Visibility = slug, "hide"
+			out = append(out, &c)
+		}
+	}
+	return out
+}
+
+// entrySlug is the slug of a catalog entry, as Entries gives them.
+func entrySlug(e any) string {
+	switch o := e.(type) {
+	case map[string]any:
+		s, _ := o["slug"].(string)
+		return s
+	case *model:
+		return o.Slug
+	}
+	return ""
+}
+
+// rendered is entries, ranked by FitOwn, as a whole models.json.
+func rendered(entries []any, used []string) []byte {
 	FitOwn(entries, used, ChatGPTOwn)
 	out := struct {
 		Models []any `json:"models"`

@@ -60,13 +60,19 @@ func (s *Server) codexCatalog(w http.ResponseWriter, r *http.Request) {
 	b.Write(head)
 	n, out := 0, 0
 	most := codexCatalogMost
-	if codexReadsWholeCatalog(r.URL.Query().Get("client_version")) {
+	whole := codexReadsWholeCatalog(r.URL.Query().Get("client_version"))
+	if whole {
 		most = math.MaxInt
 	}
 	// the Codex app reads the first 100 alone (codexcat.AppList): a ChatGPT
 	// account's own models and the ones this key's Codex used are among
 	// them, and kept when the end is cut
 	entries := codexcat.Entries(ms, 0)
+	// the slugs of threads from before magpie (#5504), which a Codex held to
+	// codexCatalogMost hasn't the room for: it would lose models for them
+	if whole {
+		entries = append(entries, codexcat.ThreadSlugs(entries)...)
+	}
 	codexcat.FitOwn(entries, usage.CodexUsedBy(access.Caller(r.Context()).KeyID), codexcat.ChatGPTOwn)
 	for _, e := range entries {
 		var one bytes.Buffer

@@ -175,3 +175,52 @@ func TestCodexCatalogFitsCodexsLimit(t *testing.T) {
 		}
 	}
 }
+
+// A Codex that reads magpie's catalog over the wire has threads from before
+// too: a ChatGPT account's own model is described under the slug such a
+// thread is on, hidden (#5504). One held to codexCatalogMost keeps its room
+// for the models it can pick.
+func TestCodexCatalogDescribesAThreadsSlug(t *testing.T) {
+	codexSignedIn(t)
+	if err := provider.Save(provider.Provider{ID: "codex", Models: []string{"gpt-5.5"}}); err != nil {
+		t.Fatal(err)
+	}
+	slugs := func(version string) map[string]string {
+		w := httptest.NewRecorder()
+		New().Handler().ServeHTTP(w, httptest.NewRequest("GET", CodexCatalogPath+"?client_version="+version, nil))
+		var list struct {
+			Models []map[string]any `json:"models"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+			t.Fatalf("%v: %s", err, w.Body.String())
+		}
+		by := map[string]string{}
+		for _, m := range list.Models {
+			by[m["slug"].(string)], _ = m["visibility"].(string)
+		}
+		return by
+	}
+	whole := slugs("0.166.0")
+	own := 0
+	for slug, v := range whole {
+		bare, ok := strings.CutPrefix(slug, "codex/")
+		if !ok {
+			continue
+		}
+		own++
+		if v != "list" {
+			t.Errorf("%s is %q", slug, v)
+		}
+		if whole[bare] != "hide" {
+			t.Errorf("%s has no hidden entry: %q", bare, whole[bare])
+		}
+	}
+	if own == 0 {
+		t.Fatalf("no model of the account's in %v", whole)
+	}
+	for slug := range slugs("0.165.0") {
+		if strings.HasPrefix(slug, "gpt-") {
+			t.Errorf("a Codex held to %d bytes was given %s", codexCatalogMost, slug)
+		}
+	}
+}
