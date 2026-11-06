@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/yetone/magpie/internal/catalog"
 )
 
 // CodexUsedUpKnown is what the catalog sync asks (agent.codexUsedUp), and it
@@ -56,5 +59,105 @@ func TestCodexUsedUpKnownAsksTheVendorNothing(t *testing.T) {
 	}
 	if n := hits.Load(); n != before {
 		t.Fatalf("CodexUsedUpKnown asked the vendor %d more times, want none", n-before)
+	}
+}
+
+// forgetReadings leaves nothing read, in memory or among the readings kept.
+func forgetReadings(t *testing.T) {
+	t.Helper()
+	forget := func() {
+		loginUsageCache.Lock()
+		loginUsageCache.m, loginUsageCache.pending = nil, nil
+		loginUsageCache.Unlock()
+		lastQuotas.Lock()
+		lastQuotas.m, lastQuotas.loaded = nil, false
+		lastQuotas.Unlock()
+	}
+	forget()
+	t.Cleanup(forget)
+}
+
+// CodexUsedUpRead tells nothing read from a reading that says not held: the
+// first is why a takeover stands, the second is what ends it (#5517). A read
+// that failed is nothing read, unless a hiccup kept what was read before.
+func TestCodexUsedUpReadTellsNothingFromRoom(t *testing.T) {
+	signIn(t)
+	rememberLogins(true)
+	body := heldUsage(t)
+	fail := atomic.Bool{}
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fail.Load() {
+			http.Error(w, "down", 500)
+			return
+		}
+		json.NewEncoder(w).Encode(body)
+	}))
+	defer fake.Close()
+	old := CodexBase
+	CodexBase = fake.URL + "/backend-api/codex"
+	t.Cleanup(func() { CodexBase = old })
+	forgetReadings(t)
+
+	if CodexUsedUpRead() {
+		t.Fatal("read, with nothing read yet")
+	}
+	fail.Store(true)
+	CodexUsedUp(context.Background())
+	if CodexUsedUpRead() {
+		t.Fatal("read, on a read that failed")
+	}
+	fail.Store(false)
+	loginUsageCache.Lock()
+	loginUsageCache.m = nil
+	loginUsageCache.Unlock()
+	if !CodexUsedUp(context.Background()) || !CodexUsedUpRead() {
+		t.Fatal("not read, on the reading just made")
+	}
+
+	// a hiccup past that reading's minute keeps it: still read
+	fail.Store(true)
+	loginUsageCache.Lock()
+	for k, e := range loginUsageCache.m {
+		e.at = time.Now().Add(-2 * time.Minute)
+		loginUsageCache.m[k] = e
+	}
+	loginUsageCache.Unlock()
+	CodexUsedUp(context.Background())
+	if !CodexUsedUpRead() {
+		t.Fatal("the reading kept through a failed read was lost")
+	}
+}
+
+// A takeover stands till there is a reading, so a first reading is told even
+// when it says what was assumed: a magpie that started during a takeover and
+// finds room would otherwise never Sync, and stay on the takeover (#5517).
+func TestFirstReadingTellsTheCatalog(t *testing.T) {
+	signIn(t)
+	rememberLogins(true)
+	body := heldUsage(t)
+	rl, _ := body["rate_limit"].(map[string]any)
+	rl["allowed"] = true // room, the same answer as nothing read
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(body)
+	}))
+	defer fake.Close()
+	old := CodexBase
+	CodexBase = fake.URL + "/backend-api/codex"
+	t.Cleanup(func() { CodexBase = old })
+	forgetReadings(t)
+	told := 0
+	was := catalog.Changed
+	catalog.Changed = func() { told++ }
+	t.Cleanup(func() { catalog.Changed = was; codexWasUsedUp.Store(false); codexWasRead.Store(false) })
+	codexWasUsedUp.Store(false)
+	codexWasRead.Store(false)
+
+	noteCodexUsedUp(CodexUsedUp(context.Background()))
+	if told != 1 {
+		t.Fatalf("the first reading, of an account with room, was told %d times", told)
+	}
+	noteCodexUsedUp(CodexUsedUp(context.Background()))
+	if told != 1 {
+		t.Fatalf("the same reading again was told %d times", told)
 	}
 }

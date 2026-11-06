@@ -90,7 +90,7 @@ func TestCodexReadNowSwitchesAtOnce(t *testing.T) {
 	if err := SetLoginOn("codex", "me@example.com", true); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { codexWasUsedUp.Store(false) })
+	t.Cleanup(func() { codexWasUsedUp.Store(false); codexWasRead.Store(false) })
 	codexReadNow("new@example.com")
 	for _, l := range Logins("codex") {
 		if l.Active && !strings.EqualFold(l.User, "me@example.com") {

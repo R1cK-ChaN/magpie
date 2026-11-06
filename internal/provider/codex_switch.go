@@ -590,14 +590,21 @@ func setLoginReturn(agent string, r loginReturn) {
 // (CodexUsedUp) at the last look.
 var codexWasUsedUp atomic.Bool
 
+// codexWasRead says whether that look had a reading (CodexUsedUpRead).
+var codexWasRead atomic.Bool
+
 // noteCodexUsedUp tells the agents' files when the account Codex is signed
 // in to runs out (CodexUsedUp: of its allowance and its credits), or has
 // room again: the Codex app sends nothing at all for an account that is
 // out, a magpie model's turn included, so the agent package then makes
 // magpie Codex's provider, and puts it back beside the sign-in after
-// (#540). Only a change is told.
+// (#540). Only a change is told, and a first reading is one: a takeover
+// stands till there is a reading, so a magpie that started during one and
+// finds room ends it here (#5517).
 func noteCodexUsedUp(now bool) {
-	if codexWasUsedUp.Swap(now) != now {
+	read := CodexUsedUpRead()
+	changed := codexWasUsedUp.Swap(now) != now
+	if codexWasRead.Swap(read) != read || changed {
 		catalog.Touched()
 	}
 }

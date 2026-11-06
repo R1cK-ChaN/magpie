@@ -13,8 +13,9 @@ func TestNoteCodexUsedUp(t *testing.T) {
 	told := 0
 	was := catalog.Changed
 	catalog.Changed = func() { told++ }
-	t.Cleanup(func() { catalog.Changed = was; codexWasUsedUp.Store(false) })
+	t.Cleanup(func() { catalog.Changed = was; codexWasUsedUp.Store(false); codexWasRead.Store(false) })
 	codexWasUsedUp.Store(false)
+	codexWasRead.Store(false)
 	for i, c := range []struct {
 		now  bool
 		told int

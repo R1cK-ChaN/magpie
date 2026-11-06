@@ -561,6 +561,20 @@ func CodexUsedUpKnown() bool {
 // codexReadingHeld is whether the reading u has the ChatGPT account Codex
 // is signed in to held by the Codex app. The held of one account's
 // reading, not codexHeld, which is what one vendor reply says.
+// CodexUsedUpRead reports whether CodexUsedUpKnown goes by a reading of the
+// account Codex is signed in to: false in a magpie that just started, till
+// its first look, and after a read that failed. Its false then says nothing
+// of the account, and magpie's takeover stands on it (#5517).
+func CodexUsedUpRead() bool {
+	u := knownLoginUsage("codex")
+	for _, l := range Logins("codex") {
+		if q, ok := u[l.User]; l.Active && ok && q.Error == "" {
+			return true
+		}
+	}
+	return false
+}
+
 func codexReadingHeld(u map[string]SubscriptionQuota) bool {
 	for _, l := range Logins("codex") {
 		if q, ok := u[l.User]; l.Active && ok && q.Error == "" && q.Held {

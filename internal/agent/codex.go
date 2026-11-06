@@ -628,6 +628,10 @@ func codexIn(at place) *Agent {
 		t, _ := edit.GetTOMLTable(path, "model_providers."+magpieID)
 		return t["requires_openai_auth"] == "false"
 	}
+	// outUnread: magpie stands in for a used-up account (codex.out) and has
+	// no reading of it yet, as when it has just started. That says nothing
+	// of the account, so Codex stays as magpie last wired it (#5517).
+	outUnread := func() bool { return stashShared()[at.key("codex.out")] == "1" && !codexUsedUpRead() }
 	openaiAuth := func() (want, known bool) {
 		if ownNoAuth() {
 			return false, false
@@ -636,7 +640,7 @@ func codexIn(at place) *Agent {
 		if !known {
 			return false, false
 		}
-		return signedIn && !codexUsedUp(), true
+		return signedIn && !codexUsedUp() && !outUnread(), true
 	}
 	putProvider := func() error {
 		kvs := []edit.KV{
@@ -1279,7 +1283,9 @@ func codexIn(at place) *Agent {
 	// while it does (#540): never with the sign-in kept on ChatGPT
 	// (chatgpt), where the user would rather the Codex app wait for the
 	// account than leave its ChatGPT state
-	out := func() bool { return stashShared()[at.key("codex.login")] != "chatgpt" && codexUsedUp() }
+	out := func() bool {
+		return stashShared()[at.key("codex.login")] != "chatgpt" && (codexUsedUp() || outUnread())
+	}
 	dropBase := func() error {
 		forget(at.key("codex.failover"))
 		if !viaBase() {
@@ -2900,6 +2906,12 @@ func codexThreadsLater(dir, p string) {
 // for it, and tells the catalog when the answer changes.
 var codexUsedUp = func() bool {
 	return provider.CodexUsedUpKnown()
+}
+
+// codexUsedUpRead reports whether codexUsedUp went by a reading, not by
+// nothing read yet (provider.CodexUsedUpRead). A var so tests can say.
+var codexUsedUpRead = func() bool {
+	return provider.CodexUsedUpRead()
 }
 
 // codexFailover reports whether Codex is signed in to a ChatGPT account

@@ -33,9 +33,10 @@ func codexHome(t *testing.T, auth, config string) (home string, read func() stri
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
 	noKeychain(t)
-	usedUp := codexUsedUp
+	usedUp, usedUpRead := codexUsedUp, codexUsedUpRead
 	codexUsedUp = func() bool { return false }
-	t.Cleanup(func() { codexUsedUp = usedUp })
+	codexUsedUpRead = func() bool { return true }
+	t.Cleanup(func() { codexUsedUp, codexUsedUpRead = usedUp, usedUpRead })
 	dir := filepath.Join(home, ".codex")
 	os.MkdirAll(dir, 0o755)
 	if auth != "" {
